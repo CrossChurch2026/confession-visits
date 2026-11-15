@@ -4,7 +4,7 @@ import {
   signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
+  getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, writeBatch,
   collection, query, where, getDocs, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
@@ -160,6 +160,7 @@ const ICON = {
   priests: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7M8 4h8"/>'),
   churches: svg('<path d="M12 2v5M9.5 4.5h5M5 21V12l7-5 7 5v9zM10 21v-5h4v5"/>'),
   users: svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>'),
+  upload: svg('<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>'),
   logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>')
 };
 const CROSS = `<svg class="cross" viewBox="0 0 60 90" aria-hidden="true"><g fill="none" stroke="#D4AF37" stroke-width="5" stroke-linecap="round"><path d="M30 6v78M10 32h40M20 16h20M20 66h20"/></g><path d="M30 24l7 8-7 8-7-8z" fill="#D4AF37"/></svg>`;
@@ -236,7 +237,7 @@ function personsView() {
   const rows = Object.entries(S.persons).sort(byName).map(([id, p]) => {
     const vs = visitsOf(id);
     return `<tr><td>${esc(p.name)}</td><td>${esc(p.address || "—")}</td>${showPriest() ? `<td>${esc(priestName(p.priestId))}</td>` : ""}
-      <td>${vs.length}</td><td>${vs[0] ? esc(fmtDate(vs[0][1].date)) : "—"}</td>
+      <td>${vs.length}</td><td class="hm">${vs[0] ? esc(fmtDate(vs[0][1].date)) : "—"}</td>
       <td><div class="acts"><button class="sec sm" data-act="detail" data-id="${esc(id)}">السجل</button>
       ${canEdit() ? `<button class="danger sm" data-act="del-person" data-id="${esc(id)}">حذف</button>` : ""}</div></td></tr>`;
   }).join("");
@@ -248,10 +249,112 @@ function personsView() {
       (visitsOf(S.detail).map(([, v]) => `<tr><td>${esc(fmtDate(v.date))}</td><td>${esc(fmtTime(v.time))}</td></tr>`).join("") ||
        "<tr><td>لا توجد زيارات</td></tr>") + "</tbody></table></div>";
   }
-  return add + `<div class="card"><div class="row"><h3 style="flex:1;margin:0">الأشخاص (${Object.keys(S.persons).length})</h3>
+  return add + importCard() + `<div class="card"><div class="row"><h3 style="flex:1;margin:0">الأشخاص (${Object.keys(S.persons).length})</h3>
     <input data-filter="p-body" placeholder="بحث بالاسم…" style="max-width:220px"></div>
-    <div class="tw"><table><thead><tr><th>الاسم</th><th>العنوان</th>${showPriest() ? "<th>الأب الكاهن</th>" : ""}<th>عدد الزيارات</th><th>آخر زيارة</th><th></th></tr></thead>
+    <div class="tw"><table><thead><tr><th>الاسم</th><th>العنوان</th>${showPriest() ? "<th>الأب الكاهن</th>" : ""}<th>عدد الزيارات</th><th class="hm">آخر زيارة</th><th></th></tr></thead>
     <tbody id="p-body">${rows}</tbody></table></div></div>` + detail;
+}
+
+// ---------- استيراد الأشخاص من Excel ----------
+const toLatinDigits = s => String(s).replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
+const cleanPhone = s => {
+  let p = toLatinDigits(s).replace(/[\s\-().]/g, "");
+  if (/^1[0125]\d{8}$/.test(p)) p = "0" + p;   // إكسيل يحذف الصفر من أول الرقم
+  return p;
+};
+const stripTitle = s => norm(s).replace(/^(القس|قس|القمص|قمص|الاب|اب|ابونا|الراهب)\s+/, "");
+const noXlsx = () => typeof XLSX === "undefined" &&
+  (flash("تعذّر تحميل مكتبة Excel. تأكد من الاتصال بالإنترنت ثم حدّث الصفحة."), true);
+
+function importCard() {
+  if (!canEdit()) return "";
+  const I = S.imp;
+  let body = `<p style="margin:0 0 10px;color:var(--mute);font-size:13px">الأعمدة: الاسم — رقم التليفون — العنوان — الأب الكاهن
+    ${role() === "priest" ? "(اختياري: الأشخاص يُسجَّلون على حسابك)" : "(مطلوب، بنفس اسمه المسجّل في البرنامج)"}.</p>
+    <div class="row"><button class="sec" data-act="tpl">تحميل نموذج Excel</button>
+    <label style="flex:2 1 220px">اختر ملف Excel (.xlsx / .csv)<input id="imp-file" type="file" accept=".xlsx,.xls,.csv"></label></div>`;
+  if (I) {
+    body += `<div class="msg" style="margin-top:12px">${esc(I.file)} — جاهز للاستيراد: <b>${I.ok.length}</b> | مكرر (يُتجاهل): <b>${I.dups}</b> | أخطاء: <b>${I.errors.length}</b></div>`;
+    if (I.ok.length) {
+      body += `<div class="tw"><table><thead><tr><th>الاسم</th><th>التليفون</th><th>العنوان</th><th>الأب الكاهن</th></tr></thead><tbody>` +
+        I.ok.slice(0, 5).map(p => `<tr><td>${esc(p.name)}</td><td dir="ltr">${esc(p.phone)}</td><td>${esc(p.address)}</td><td>${esc(priestName(p.priestId))}</td></tr>`).join("") +
+        `</tbody></table></div>` + (I.ok.length > 5 ? `<small>معاينة أول 5 فقط من ${I.ok.length}</small>` : "");
+    }
+    if (I.errors.length) {
+      body += `<div class="tw" style="margin-top:8px"><table><thead><tr><th>السطر</th><th>المشكلة (لن يُستورد)</th></tr></thead><tbody>` +
+        I.errors.slice(0, 50).map(e => `<tr><td>${e.row}</td><td>${esc(e.msg)}</td></tr>`).join("") + `</tbody></table></div>` +
+        (I.errors.length > 50 ? `<small>و ${I.errors.length - 50} أخطاء أخرى غير معروضة</small>` : "");
+    }
+    body += `<div class="row" style="margin-top:12px">${I.ok.length ? `<button data-act="imp-go">استيراد ${I.ok.length} شخص</button>` : ""}
+      <button class="sec" data-act="imp-cancel">إلغاء</button></div>`;
+  }
+  return `<div class="card"><h3 class="band">${ICON.upload}استيراد من Excel</h3>${body}</div>`;
+}
+
+function downloadTemplate() {
+  if (noXlsx()) return;
+  const priests = Object.values(S.priests).sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["الاسم", "رقم التليفون", "العنوان", "الأب الكاهن"],
+    ["(مثال - احذف هذا السطر) مينا جرجس", "01000000000", "شارع النصر - الدور الثالث", priests[0]?.name || "القس فلان"]
+  ]);
+  ws["!cols"] = [{ wch: 34 }, { wch: 16 }, { wch: 34 }, { wch: 28 }];
+  ws["!views"] = [{ RTL: true }];
+  const ws2 = XLSX.utils.aoa_to_sheet([["الأب الكاهن", "الكنيسة"], ...priests.map(p => [p.name, churchName(p.churchId)])]);
+  ws2["!cols"] = [{ wch: 28 }, { wch: 28 }];
+  ws2["!views"] = [{ RTL: true }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "الأشخاص");
+  XLSX.utils.book_append_sheet(wb, ws2, "الآباء الكهنة");
+  XLSX.writeFile(wb, "persons-template.xlsx");
+}
+
+async function parseImport(file) {
+  if (!file || noXlsx()) return;
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array", codepage: 65001 });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" });
+  if (rows.length > 2001) return flash("الملف كبير: الحد الأقصى 2000 سطر في المرة الواحدة");
+  const h = rows.findIndex(r => r.some(c => String(c).trim()));
+  if (h < 0) return flash("الملف فارغ");
+  const hdr = rows[h].map(String);
+  const col = re => hdr.findIndex(x => re.test(norm(x)));
+  const iPriest = col(/كاهن|^الاب$|^اب$|ابونا|priest/);
+  const iChurch = col(/كنيس|church/);
+  const iPhone = col(/تليف|هاتف|موبايل|محمول|رقم|phone|mobile|tel/);
+  const iAddr = col(/عنوان|address/);
+  const iName = hdr.findIndex((x, i) => /اسم|name/.test(norm(x)) && i !== iPriest && i !== iChurch);
+  if (iName < 0) return flash('لم أجد عمود "الاسم" في أول سطر بالملف');
+  if (role() !== "priest" && iPriest < 0) return flash('لم أجد عمود "الأب الكاهن" في أول سطر بالملف');
+
+  const cell = (r, i) => i < 0 ? "" : String(r[i] ?? "").trim();
+  const seen = new Set(Object.values(S.persons).map(p => p.priestId + "|" + norm(p.name)));
+  const ok = [], errors = []; let dups = 0;
+  rows.slice(h + 1).forEach((r, k) => {
+    const row = h + 2 + k;   // رقم السطر كما يظهر في Excel
+    const name = cell(r, iName).replace(/\s+/g, " "), phone = cleanPhone(cell(r, iPhone));
+    const address = cell(r, iAddr), pr = cell(r, iPriest), ch = cell(r, iChurch);
+    if (!name && !phone && !address && !pr) return;          // سطر فارغ
+    if (name.startsWith("(مثال")) return;                    // سطر المثال في النموذج
+    if (!name) return errors.push({ row, msg: "الاسم فارغ" });
+    if (name.length > 100) return errors.push({ row, msg: "الاسم أطول من 100 حرف" });
+    let priestId, churchId;
+    if (role() === "priest") { priestId = S.me.priestId; churchId = S.me.churchId; }
+    else {
+      if (!pr) return errors.push({ row, msg: `الأب الكاهن فارغ (${name})` });
+      let c = Object.entries(S.priests).filter(([, p]) => stripTitle(p.name) === stripTitle(pr));
+      if (c.length > 1 && ch) c = c.filter(([, p]) => norm(churchName(p.churchId)).includes(norm(ch)));
+      if (!c.length) return errors.push({ row, msg: `الأب الكاهن غير مسجّل في البرنامج: ${pr}` });
+      if (c.length > 1) return errors.push({ row, msg: `يوجد أكثر من أب كاهن بنفس الاسم (${pr}). أضف عمود "الكنيسة"` });
+      priestId = c[0][0]; churchId = c[0][1].churchId;
+    }
+    const key = priestId + "|" + norm(name);
+    if (seen.has(key)) return void dups++;
+    seen.add(key);
+    ok.push({ name, phone, address, priestId, churchId });
+  });
+  S.imp = { file: file.name, ok, dups, errors };
+  S.msg = "";
+  render();
 }
 
 function priestsView() {
@@ -291,7 +394,7 @@ function usersView() {
 // ---------- الأوامر ----------
 async function act(a, d) {
   if (a === "tab") {
-    S.tab = d.v; S.msg = ""; S.detail = null;
+    S.tab = d.v; S.msg = ""; S.detail = null; S.imp = null;
     if (S.tab === "users") await loadUsers();
     return render();
   }
@@ -367,6 +470,31 @@ async function act(a, d) {
     Object.assign(S.users[id], { role: r, status, churchId, priestId });
     S.msg = "تم الحفظ"; return render();
   }
+  if (a === "tpl") return downloadTemplate();
+  if (a === "imp-cancel") { S.imp = null; return render(); }
+  if (a === "imp-go") {
+    const list = S.imp?.ok || []; if (!list.length) return;
+    let n = 0;
+    try {
+      for (let i = 0; i < list.length; i += 400) {   // حد Firestore: 500 عملية في الدفعة
+        const chunk = list.slice(i, i + 400), batch = writeBatch(db), made = [];
+        chunk.forEach(p => {
+          const ref = doc(collection(db, "persons"));
+          batch.set(ref, { ...p, createdAt: serverTimestamp() });
+          made.push([ref.id, p]);
+        });
+        flash(`جارٍ الحفظ… ${Math.min(i + 400, list.length)} / ${list.length}`);
+        await batch.commit();
+        made.forEach(([id, p]) => { S.persons[id] = { ...p, createdAt: null }; });
+        n += chunk.length;
+      }
+    } catch (e) {
+      console.error(e); S.imp = null;
+      S.msg = `توقف الاستيراد بعد حفظ ${n} من ${list.length} (${e.code || e.message}). راجع قائمة الأشخاص قبل إعادة الرفع لتجنب التكرار.`;
+      return render();
+    }
+    S.imp = null; S.msg = `تم استيراد ${n} شخص`; return render();
+  }
   if (a === "export") {
     const q = s => `"${String(s ?? "").replace(/"/g, '""')}"`;
     const lines = [["اليوم", "التاريخ", "الميعاد", "الاسم", "الأب الكاهن", "الكنيسة"].map(q).join(",")];
@@ -377,6 +505,10 @@ async function act(a, d) {
     a2.download = `visits-${ymd(new Date())}.csv`; a2.click(); URL.revokeObjectURL(a2.href);
   }
 }
+
+$app.addEventListener("change", e => {
+  if (e.target.id === "imp-file") run(() => parseImport(e.target.files[0]));
+});
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 

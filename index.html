@@ -80,7 +80,7 @@
 
   button.sm { padding:6px 10px; font-size:13px; white-space:nowrap; }
   .acts { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
-  @media (max-width:520px) { th, td { padding:8px 5px; font-size:13px; } }
+  @media (max-width:520px) { th, td { padding:8px 5px; font-size:13px; } .hm { display:none; } }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th, td { text-align:right; padding:9px 8px; border-bottom:1px solid var(--line); vertical-align:middle; }
   th { background:var(--gold-l); color:var(--ink); font-weight:800; }
@@ -104,6 +104,7 @@
 </head>
 <body>
 <div id="app"></div>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
