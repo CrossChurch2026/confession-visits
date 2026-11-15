@@ -46,13 +46,15 @@ const norm = s => String(s ?? "").toLowerCase()
 function fillPersons(q) {
   const sel = document.getElementById("v-person"); if (!sel) return;
   const n = norm(q);
-  const list = Object.entries(S.persons)
-    .filter(([, p]) => !n || norm(p.name + " " + (p.address || "")).includes(n)).sort(byName);
+  // لا تظهر أسماء قبل بدء الكتابة
+  const list = !n ? [] : Object.entries(S.persons)
+    .filter(([, p]) => norm(p.name + " " + (p.address || "")).includes(n)).sort(byName);
   sel.innerHTML = list.map(([id, p]) =>
     `<option value="${esc(id)}">${esc(p.name)}${showPriest() ? " — " + esc(priestName(p.priestId)) : ""}</option>`).join("");
+  sel.hidden = !list.length;
   if (list.length === 1) sel.value = list[0][0];
   const c = document.getElementById("v-count");
-  if (c) c.textContent = list.length ? list.length + " اسم" : "لا توجد نتائج";
+  if (c) c.textContent = !n ? "اكتب جزءًا من الاسم لإظهار النتائج" : list.length ? list.length + " اسم" : "لا توجد نتائج";
 }
 
 function flash(m) {
@@ -212,8 +214,8 @@ function visitsView() {
   return `<div class="card"><h3 class="band">${ICON.visits}تسجيل زيارة</h3><div class="row">
       <label style="flex:1 1 100%">الشخص (ابحث ثم اختر)
         <input id="v-search" data-pfilter="1" placeholder="اكتب جزءًا من الاسم…" autocomplete="off">
-        <select id="v-person" size="5">${personOpts()}</select>
-        <small id="v-count">${Object.keys(S.persons).length} اسم</small></label>
+        <select id="v-person" size="5" hidden></select>
+        <small id="v-count">اكتب جزءًا من الاسم لإظهار النتائج</small></label>
       <label>اليوم<input id="v-date" type="date" value="${ymd(now)}"></label>
       <label>الميعاد<input id="v-time" type="time" value="${hm(now)}"></label>
       <button data-act="add-visit">تسجيل</button></div></div>
