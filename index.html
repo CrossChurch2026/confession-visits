@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>سجل زيارات الاعتراف</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#222; --mute:#777; --pri:#7a1f2b; --line:#e3e0da; --ok:#2e7d32; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI",Tahoma,Arial,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--pri); color:#fff; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  header small { opacity:.85; display:block; }
+  nav { display:flex; gap:6px; padding:10px 12px 0; overflow-x:auto; }
+  nav button { background:#fff; color:var(--ink); border:1px solid var(--line); border-radius:8px 8px 0 0; padding:8px 14px; cursor:pointer; white-space:nowrap; }
+  nav button.on { background:var(--pri); color:#fff; border-color:var(--pri); }
+  main { padding:12px; max-width:1000px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+  .row > label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--mute); flex:1 1 150px; }
+  input, select { padding:9px; border:1px solid var(--line); border-radius:6px; font:inherit; width:100%; }
+  button { background:var(--pri); color:#fff; border:0; border-radius:6px; padding:9px 14px; cursor:pointer; font:inherit; }
+  button.sec { background:#fff; color:var(--pri); border:1px solid var(--pri); }
+  button.danger { background:#fff; color:#b00020; border:1px solid #b00020; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:right; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--mute); font-weight:600; }
+  .tw { overflow-x:auto; }
+  .msg { min-height:22px; color:var(--pri); font-size:14px; margin-bottom:6px; }
+  .center { text-align:center; padding:40px 12px; }
+  .login { max-width:380px; margin:40px auto; }
+  .login .card > * { margin-bottom:10px; }
+  .tag { font-size:12px; padding:2px 8px; border-radius:10px; background:#eee; }
+  .tag.ok { background:#e3f1e4; color:var(--ok); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function meDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function approved() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && meDoc().data.status == 'approved';
+    }
+    function role() { return meDoc().data.role; }
+    function isAdmin() { return approved() && role() == 'admin'; }
+
+    // هل السجل داخل نطاق صلاحية المستخدم؟
+    function inScope(d) {
+      return isAdmin()
+        || (role() == 'church_admin' && d.churchId == meDoc().data.churchId)
+        || (role() in ['priest', 'recorder']
+            && d.priestId == meDoc().data.priestId
+            && d.churchId == meDoc().data.churchId);
+    }
+
+    // المستخدمون: التسجيل الذاتي بحالة "قيد الموافقة" فقط، والتعديل للمدير فقط
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['email', 'name', 'role', 'status', 'createdAt'])
+        && request.resource.data.role == 'none'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.email == request.auth.token.email;
+      allow update, delete: if isAdmin();
+    }
+
+    match /churches/{id} {
+      allow read: if approved() && (isAdmin() || id == meDoc().data.churchId);
+      allow write: if isAdmin();
+    }
+
+    match /priests/{id} {
+      allow read: if approved() && (
+        isAdmin()
+        || (role() == 'church_admin' && resource.data.churchId == meDoc().data.churchId)
+        || (role() in ['priest', 'recorder'] && id == meDoc().data.priestId));
+      allow create: if approved() && (
+        isAdmin()
+        || (role() == 'church_admin' && request.resource.data.churchId == meDoc().data.churchId));
+      allow update: if approved() && (
+        isAdmin()
+        || (role() == 'church_admin'
+            && resource.data.churchId == meDoc().data.churchId
+            && request.resource.data.churchId == resource.data.churchId));
+      allow delete: if approved() && (
+        isAdmin()
+        || (role() == 'church_admin' && resource.data.churchId == meDoc().data.churchId));
+    }
+
+    match /persons/{id} {
+      allow read: if approved() && inScope(resource.data);
+      allow create: if approved() && role() != 'recorder' && inScope(request.resource.data);
+      allow update: if approved() && role() != 'recorder'
+        && inScope(resource.data) && inScope(request.resource.data);
+      allow delete: if approved() && role() != 'recorder' && inScope(resource.data);
+    }
+
+    match /visits/{id} {
+      allow read: if approved() && inScope(resource.data);
+      allow create: if approved() && inScope(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if approved() && role() != 'recorder'
+        && inScope(resource.data) && inScope(request.resource.data);
+      allow delete: if approved() && role() != 'recorder' && inScope(resource.data);
+    }
+  }
+}
