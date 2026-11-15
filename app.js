@@ -232,11 +232,12 @@ function personsView() {
       <label>الاسم<input id="p-name"></label>
       <label>الهاتف (اختياري)<input id="p-phone" dir="ltr"></label>
       <label>العنوان (اختياري)<input id="p-address"></label>
+      <label>السن (اختياري)<input id="p-age" type="number" min="1" max="120" inputmode="numeric"></label>
       ${role() === "priest" ? "" : `<label>الأب الكاهن<select id="p-priest"><option value="">اختر…</option>${priestOpts("", role() === "admin")}</select></label>`}
       <button data-act="add-person">إضافة</button></div></div>` : "";
   const rows = Object.entries(S.persons).sort(byName).map(([id, p]) => {
     const vs = visitsOf(id);
-    return `<tr><td>${esc(p.name)}</td><td>${esc(p.address || "—")}</td>${showPriest() ? `<td>${esc(priestName(p.priestId))}</td>` : ""}
+    return `<tr><td>${esc(p.name)}${p.age ? `<br><small>${p.age} سنة</small>` : ""}</td><td>${esc(p.address || "—")}</td>${showPriest() ? `<td>${esc(priestName(p.priestId))}</td>` : ""}
       <td>${vs.length}</td><td class="hm">${vs[0] ? esc(fmtDate(vs[0][1].date)) : "—"}</td>
       <td><div class="acts"><button class="sec sm" data-act="detail" data-id="${esc(id)}">السجل</button>
       ${canEdit() ? `<button class="danger sm" data-act="del-person" data-id="${esc(id)}">حذف</button>` : ""}</div></td></tr>`;
@@ -245,7 +246,7 @@ function personsView() {
   if (S.detail && S.persons[S.detail]) {
     const dp = S.persons[S.detail];
     detail = `<div class="card"><h3>زيارات: ${esc(dp.name)}</h3>
-      <p style="color:var(--mute);margin:0 0 8px">${dp.address ? "العنوان: " + esc(dp.address) : ""}${dp.address && dp.phone ? " — " : ""}${dp.phone ? "الهاتف: " + esc(dp.phone) : ""}</p><table><tbody>` +
+      <p style="color:var(--mute);margin:0 0 8px">${[dp.age ? "السن: " + dp.age : "", dp.address ? "العنوان: " + esc(dp.address) : "", dp.phone ? "الهاتف: " + esc(dp.phone) : ""].filter(Boolean).join(" — ")}</p><table><tbody>` +
       (visitsOf(S.detail).map(([, v]) => `<tr><td>${esc(fmtDate(v.date))}</td><td>${esc(fmtTime(v.time))}</td></tr>`).join("") ||
        "<tr><td>لا توجد زيارات</td></tr>") + "</tbody></table></div>";
   }
@@ -262,6 +263,10 @@ const cleanPhone = s => {
   if (/^1[0125]\d{8}$/.test(p)) p = "0" + p;   // إكسيل يحذف الصفر من أول الرقم
   return p;
 };
+const cleanAge = s => {   // السن اختياري: رقم من 1 إلى 120 وإلا null
+  const n = parseInt(toLatinDigits(String(s ?? "")).trim(), 10);
+  return n >= 1 && n <= 120 ? n : null;
+};
 const stripTitle = s => norm(s).replace(/^(القس|قس|القمص|قمص|الاب|اب|ابونا|الراهب)\s+/, "");
 const noXlsx = () => typeof XLSX === "undefined" &&
   (flash("تعذّر تحميل مكتبة Excel. تأكد من الاتصال بالإنترنت ثم حدّث الصفحة."), true);
@@ -269,15 +274,15 @@ const noXlsx = () => typeof XLSX === "undefined" &&
 function importCard() {
   if (!canEdit()) return "";
   const I = S.imp;
-  let body = `<p style="margin:0 0 10px;color:var(--mute);font-size:13px">الأعمدة: الاسم — رقم التليفون — العنوان — الأب الكاهن
+  let body = `<p style="margin:0 0 10px;color:var(--mute);font-size:13px">الأعمدة: الاسم — السن (اختياري) — رقم التليفون — العنوان — الأب الكاهن
     ${role() === "priest" ? "(اختياري: الأشخاص يُسجَّلون على حسابك)" : "(مطلوب، بنفس اسمه المسجّل في البرنامج)"}.</p>
     <div class="row"><button class="sec" data-act="tpl">تحميل نموذج Excel</button>
     <label style="flex:2 1 220px">اختر ملف Excel (.xlsx / .csv)<input id="imp-file" type="file" accept=".xlsx,.xls,.csv"></label></div>`;
   if (I) {
     body += `<div class="msg" style="margin-top:12px">${esc(I.file)} — جاهز للاستيراد: <b>${I.ok.length}</b> | مكرر (يُتجاهل): <b>${I.dups}</b> | أخطاء: <b>${I.errors.length}</b></div>`;
     if (I.ok.length) {
-      body += `<div class="tw"><table><thead><tr><th>الاسم</th><th>التليفون</th><th>العنوان</th><th>الأب الكاهن</th></tr></thead><tbody>` +
-        I.ok.slice(0, 5).map(p => `<tr><td>${esc(p.name)}</td><td dir="ltr">${esc(p.phone)}</td><td>${esc(p.address)}</td><td>${esc(priestName(p.priestId))}</td></tr>`).join("") +
+      body += `<div class="tw"><table><thead><tr><th>الاسم</th><th>السن</th><th>التليفون</th><th>العنوان</th><th>الأب الكاهن</th></tr></thead><tbody>` +
+        I.ok.slice(0, 5).map(p => `<tr><td>${esc(p.name)}</td><td>${p.age ?? "—"}</td><td dir="ltr">${esc(p.phone)}</td><td>${esc(p.address)}</td><td>${esc(priestName(p.priestId))}</td></tr>`).join("") +
         `</tbody></table></div>` + (I.ok.length > 5 ? `<small>معاينة أول 5 فقط من ${I.ok.length}</small>` : "");
     }
     if (I.errors.length) {
@@ -295,10 +300,10 @@ function downloadTemplate() {
   if (noXlsx()) return;
   const priests = Object.values(S.priests).sort((a, b) => a.name.localeCompare(b.name, "ar"));
   const ws = XLSX.utils.aoa_to_sheet([
-    ["الاسم", "رقم التليفون", "العنوان", "الأب الكاهن"],
-    ["(مثال - احذف هذا السطر) مينا جرجس", "01000000000", "شارع النصر - الدور الثالث", priests[0]?.name || "القس فلان"]
+    ["الاسم", "السن", "رقم التليفون", "العنوان", "الأب الكاهن"],
+    ["(مثال - احذف هذا السطر) مينا جرجس", "25", "01000000000", "شارع النصر - الدور الثالث", priests[0]?.name || "القس فلان"]
   ]);
-  ws["!cols"] = [{ wch: 34 }, { wch: 16 }, { wch: 34 }, { wch: 28 }];
+  ws["!cols"] = [{ wch: 34 }, { wch: 8 }, { wch: 16 }, { wch: 34 }, { wch: 28 }];
   ws["!views"] = [{ RTL: true }];
   const ws2 = XLSX.utils.aoa_to_sheet([["الأب الكاهن", "الكنيسة"], ...priests.map(p => [p.name, churchName(p.churchId)])]);
   ws2["!cols"] = [{ wch: 28 }, { wch: 28 }];
@@ -322,6 +327,7 @@ async function parseImport(file) {
   const iChurch = col(/كنيس|church/);
   const iPhone = col(/تليف|هاتف|موبايل|محمول|رقم|phone|mobile|tel/);
   const iAddr = col(/عنوان|address/);
+  const iAge = col(/^(السن|سن|العمر|عمر)$|age/);
   const iName = hdr.findIndex((x, i) => /اسم|name/.test(norm(x)) && i !== iPriest && i !== iChurch);
   if (iName < 0) return flash('لم أجد عمود "الاسم" في أول سطر بالملف');
   if (role() !== "priest" && iPriest < 0) return flash('لم أجد عمود "الأب الكاهن" في أول سطر بالملف');
@@ -333,10 +339,12 @@ async function parseImport(file) {
     const row = h + 2 + k;   // رقم السطر كما يظهر في Excel
     const name = cell(r, iName).replace(/\s+/g, " "), phone = cleanPhone(cell(r, iPhone));
     const address = cell(r, iAddr), pr = cell(r, iPriest), ch = cell(r, iChurch);
+    const ageRaw = cell(r, iAge), age = cleanAge(ageRaw);
     if (!name && !phone && !address && !pr) return;          // سطر فارغ
     if (name.startsWith("(مثال")) return;                    // سطر المثال في النموذج
     if (!name) return errors.push({ row, msg: "الاسم فارغ" });
     if (name.length > 100) return errors.push({ row, msg: "الاسم أطول من 100 حرف" });
+    if (ageRaw && age === null) return errors.push({ row, msg: `السن غير صحيح (${ageRaw}) — اتركه فارغًا أو اكتب رقمًا من 1 إلى 120` });
     let priestId, churchId;
     if (role() === "priest") { priestId = S.me.priestId; churchId = S.me.churchId; }
     else {
@@ -350,7 +358,7 @@ async function parseImport(file) {
     const key = priestId + "|" + norm(name);
     if (seen.has(key)) return void dups++;
     seen.add(key);
-    ok.push({ name, phone, address, priestId, churchId });
+    ok.push({ name, phone, address, age, priestId, churchId });
   });
   S.imp = { file: file.name, ok, dups, errors };
   S.msg = "";
@@ -419,12 +427,13 @@ async function act(a, d) {
   }
   if (a === "add-person") {
     const name = val("p-name").trim(); if (!name) return flash("اكتب الاسم");
+    if (val("p-age").trim() && !cleanAge(val("p-age"))) return flash("السن غير صحيح (من 1 إلى 120)");
     let priestId, churchId;
     if (role() === "priest") { priestId = S.me.priestId; churchId = S.me.churchId; }
     else { priestId = val("p-priest"); if (!priestId) return flash("اختر الأب الكاهن"); churchId = S.priests[priestId].churchId; }
     const dup = Object.values(S.persons).some(p => p.priestId === priestId && p.name === name);
     if (dup && !confirm("يوجد شخص بنفس الاسم عند هذا الأب. هل تريد الإضافة مرة أخرى؟")) return;
-    const data = { name, phone: val("p-phone").trim(), address: val("p-address").trim(), priestId, churchId, createdAt: serverTimestamp() };
+    const data = { name, phone: val("p-phone").trim(), address: val("p-address").trim(), age: cleanAge(val("p-age")), priestId, churchId, createdAt: serverTimestamp() };
     const ref = await addDoc(collection(db, "persons"), data);
     S.persons[ref.id] = { ...data, createdAt: null }; S.msg = "تمت الإضافة"; return render();
   }
