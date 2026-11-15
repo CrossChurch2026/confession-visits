@@ -1,6 +1,6 @@
 // Service worker بسيط: يخزّن ملفات الواجهة فقط ليعمل التثبيت على الموبايل.
 // البيانات تأتي دائمًا من Firestore ولا تُخزَّن هنا.
-const CACHE = "confession-shell-v1";
+const CACHE = "confession-shell-v2";
 const SHELL = ["./", "index.html", "app.js", "manifest.json", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {

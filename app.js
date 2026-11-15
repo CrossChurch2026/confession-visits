@@ -122,17 +122,34 @@ function render() {
   if (role() === "admin") { tabs.push(["churches", "الكنائس"]); tabs.push(["users", "المستخدمون"]); }
   const views = { visits: visitsView, persons: personsView, priests: priestsView, churches: churchesView, users: usersView };
   $app.innerHTML = header() +
-    `<nav>${tabs.map(([k, v]) => `<button class="${S.tab === k ? "on" : ""}" data-act="tab" data-v="${k}">${v}</button>`).join("")}</nav>` +
-    `<main><div class="msg" id="msg">${esc(S.msg)}</div>${views[S.tab]()}</main>`;
+    `<nav>${tabs.map(([k, v]) => `<button class="${S.tab === k ? "on" : ""}" data-act="tab" data-v="${k}">${ICON[k] || ""}${v}</button>`).join("")}</nav>` +
+    `<main><div class="msg" id="msg">${esc(S.msg)}</div>${views[S.tab]()}</main>${ORN}`;
 }
+// ---------- الأيقونات والزخارف ----------
+const svg = p => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const ICON = {
+  visits: svg('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+  persons: svg('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14c2.6.2 4.5 2 4.5 5"/>'),
+  priests: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7M8 4h8"/>'),
+  churches: svg('<path d="M12 2v5M9.5 4.5h5M5 21V12l7-5 7 5v9zM10 21v-5h4v5"/>'),
+  users: svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>'),
+  logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>')
+};
+const CROSS = `<svg class="cross" viewBox="0 0 60 90" aria-hidden="true"><g fill="none" stroke="#D4AF37" stroke-width="5" stroke-linecap="round"><path d="M30 6v78M10 32h40M20 16h20M20 66h20"/></g><path d="M30 24l7 8-7 8-7-8z" fill="#D4AF37"/></svg>`;
+const CHURCH = `<svg class="church" viewBox="0 0 120 72" fill="#D4AF37" aria-hidden="true"><rect x="8" y="42" width="16" height="30"/><path d="M8 42q8-14 16 0z"/><rect x="30" y="32" width="28" height="40"/><path d="M30 32q14-26 28 0z"/><rect x="43" y="4" width="2" height="12"/><rect x="39" y="8" width="10" height="2"/><rect x="64" y="46" width="18" height="26"/><path d="M64 46q9-13 18 0z"/><rect x="88" y="54" width="24" height="18"/></svg>`;
+const ORN = `<div class="orn"><span></span>${CROSS}<span></span></div>`;
+
 function header() {
-  return `<header><div><strong>سجل زيارات الاعتراف</strong>
-    <small>${S.me ? esc(S.me.name) + " — " + ROLES[S.me.role] : ""}</small></div>
-    ${S.user ? '<button class="sec" data-act="logout">تسجيل الخروج</button>' : ""}</header>`;
+  return `<header class="top">${CHURCH}
+    <div class="hrow">${CROSS}
+      <div class="ttl"><strong>سجل زيارات الاعتراف</strong>
+      <small>${S.me ? esc(S.me.name) + " — " + ROLES[S.me.role] : ""}</small></div>
+      ${S.user ? `<button class="hbtn" data-act="logout">${ICON.logout}خروج</button>` : ""}</div>
+    <svg class="wave" viewBox="0 0 400 26" preserveAspectRatio="none" aria-hidden="true"><path d="M0 26V12C70 -2 140 24 220 12S350 0 400 10V26Z" fill="#FAF6E9"/><path d="M0 12C70 -2 140 24 220 12S350 0 400 10" fill="none" stroke="#D4AF37" stroke-width="2"/></svg></header>`;
 }
 function loginView() {
-  return `<div class="login"><div class="card">
-    <h2 class="center" style="padding:0">سجل زيارات الاعتراف</h2>
+  return header() + `<div class="login"><div class="card">
+    <h2 class="center" style="padding:0;color:var(--pri)">تسجيل الدخول</h2>
     <button data-act="google" style="width:100%">الدخول بحساب Google</button>
     <hr>
     <input id="l-email" type="email" placeholder="البريد الإلكتروني" dir="ltr">
@@ -166,8 +183,8 @@ function visitsView() {
     .map(([id, v]) => `<tr><td>${esc(fmtDate(v.date))}</td><td>${esc(fmtTime(v.time))}</td>
       <td>${esc(S.persons[v.personId]?.name || "—")}</td>
       ${showPriest() ? `<td>${esc(priestName(v.priestId))}</td>` : ""}
-      ${canEdit() ? `<td><button class="danger" data-act="del-visit" data-id="${esc(id)}">حذف</button></td>` : ""}</tr>`).join("");
-  return `<div class="card"><h3>تسجيل زيارة</h3><div class="row">
+      ${canEdit() ? `<td><button class="danger sm" data-act="del-visit" data-id="${esc(id)}">حذف</button></td>` : ""}</tr>`).join("");
+  return `<div class="card"><h3 class="band">${ICON.visits}تسجيل زيارة</h3><div class="row">
       <label>الشخص<select id="v-person"><option value="">اختر…</option>${personOpts()}</select></label>
       <label>اليوم<input id="v-date" type="date" value="${ymd(now)}"></label>
       <label>الميعاد<input id="v-time" type="time" value="${hm(now)}"></label>
@@ -180,7 +197,7 @@ function visitsView() {
 }
 
 function personsView() {
-  const add = canEdit() ? `<div class="card"><h3>إضافة شخص (مرة واحدة)</h3><div class="row">
+  const add = canEdit() ? `<div class="card"><h3 class="band">${ICON.persons}إضافة شخص (مرة واحدة)</h3><div class="row">
       <label>الاسم<input id="p-name"></label>
       <label>الهاتف (اختياري)<input id="p-phone" dir="ltr"></label>
       <label>العنوان (اختياري)<input id="p-address"></label>
@@ -190,8 +207,8 @@ function personsView() {
     const vs = visitsOf(id);
     return `<tr><td>${esc(p.name)}</td><td>${esc(p.address || "—")}</td>${showPriest() ? `<td>${esc(priestName(p.priestId))}</td>` : ""}
       <td>${vs.length}</td><td>${vs[0] ? esc(fmtDate(vs[0][1].date)) : "—"}</td>
-      <td><button class="sec" data-act="detail" data-id="${esc(id)}">السجل</button>
-      ${canEdit() ? ` <button class="danger" data-act="del-person" data-id="${esc(id)}">حذف</button>` : ""}</td></tr>`;
+      <td><div class="acts"><button class="sec sm" data-act="detail" data-id="${esc(id)}">السجل</button>
+      ${canEdit() ? `<button class="danger sm" data-act="del-person" data-id="${esc(id)}">حذف</button>` : ""}</div></td></tr>`;
   }).join("");
   let detail = "";
   if (S.detail && S.persons[S.detail]) {
@@ -211,7 +228,7 @@ function priestsView() {
   const rows = Object.entries(S.priests).sort(byName).map(([id, p]) =>
     `<tr><td>${esc(p.name)}</td><td>${esc(churchName(p.churchId))}</td>
      <td><button class="danger" data-act="del-priest" data-id="${esc(id)}">حذف</button></td></tr>`).join("");
-  return `<div class="card"><h3>إضافة أب كاهن</h3><div class="row">
+  return `<div class="card"><h3 class="band">${ICON.priests}إضافة أب كاهن</h3><div class="row">
     <label>الاسم<input id="pr-name"></label>
     ${role() === "admin" ? `<label>الكنيسة<select id="pr-church"><option value="">اختر…</option>${churchOpts("")}</select></label>` : ""}
     <button data-act="add-priest">إضافة</button></div></div>
@@ -221,7 +238,7 @@ function priestsView() {
 function churchesView() {
   const rows = Object.entries(S.churches).sort(byName).map(([id, c]) =>
     `<tr><td>${esc(c.name)}</td><td><button class="danger" data-act="del-church" data-id="${esc(id)}">حذف</button></td></tr>`).join("");
-  return `<div class="card"><h3>إضافة كنيسة</h3><div class="row">
+  return `<div class="card"><h3 class="band">${ICON.churches}إضافة كنيسة</h3><div class="row">
     <label>الاسم<input id="c-name"></label><button data-act="add-church">إضافة</button></div></div>
     <div class="card"><table><tbody>${rows}</tbody></table></div>`;
 }
