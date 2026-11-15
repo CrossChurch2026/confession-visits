@@ -36,6 +36,24 @@ const role = () => S.me.role;
 const showPriest = () => role() === "admin" || role() === "church_admin";
 const canEdit = () => role() !== "recorder";
 const byName = (a, b) => a[1].name.localeCompare(b[1].name, "ar");
+// توحيد الحروف العربية للبحث (أ/إ/آ=ا، ى=ي، ة=ه، وإزالة التشكيل)
+const norm = s => String(s ?? "").toLowerCase()
+  .replace(/[ً-ٰٟـ]/g, "")
+  .replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+  .replace(/\s+/g, " ").trim();
+
+// تصفية قائمة الأشخاص في شاشة تسجيل الزيارة
+function fillPersons(q) {
+  const sel = document.getElementById("v-person"); if (!sel) return;
+  const n = norm(q);
+  const list = Object.entries(S.persons)
+    .filter(([, p]) => !n || norm(p.name + " " + (p.address || "")).includes(n)).sort(byName);
+  sel.innerHTML = list.map(([id, p]) =>
+    `<option value="${esc(id)}">${esc(p.name)}${showPriest() ? " — " + esc(priestName(p.priestId)) : ""}</option>`).join("");
+  if (list.length === 1) sel.value = list[0][0];
+  const c = document.getElementById("v-count");
+  if (c) c.textContent = list.length ? list.length + " اسم" : "لا توجد نتائج";
+}
 
 function flash(m) {
   S.msg = m;
@@ -121,9 +139,16 @@ function render() {
   if (role() === "admin" || role() === "church_admin") tabs.push(["priests", "الآباء الكهنة"]);
   if (role() === "admin") { tabs.push(["churches", "الكنائس"]); tabs.push(["users", "المستخدمون"]); }
   const views = { visits: visitsView, persons: personsView, priests: priestsView, churches: churchesView, users: usersView };
+  const prevNav = document.querySelector("nav")?.scrollLeft ?? 0;
   $app.innerHTML = header() +
     `<nav>${tabs.map(([k, v]) => `<button class="${S.tab === k ? "on" : ""}" data-act="tab" data-v="${k}">${ICON[k] || ""}${v}</button>`).join("")}</nav>` +
     `<main><div class="msg" id="msg">${esc(S.msg)}</div>${views[S.tab]()}</main>${ORN}`;
+  // إبقاء شريط التبويبات في مكانه، والتأكد أن التبويب المختار ظاهر
+  const nav = document.querySelector("nav");
+  if (nav) {
+    nav.scrollLeft = prevNav;
+    document.querySelector("nav button.on")?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }
 }
 // ---------- الأيقونات والزخارف ----------
 const svg = p => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
@@ -185,7 +210,10 @@ function visitsView() {
       ${showPriest() ? `<td>${esc(priestName(v.priestId))}</td>` : ""}
       ${canEdit() ? `<td><button class="danger sm" data-act="del-visit" data-id="${esc(id)}">حذف</button></td>` : ""}</tr>`).join("");
   return `<div class="card"><h3 class="band">${ICON.visits}تسجيل زيارة</h3><div class="row">
-      <label>الشخص<select id="v-person"><option value="">اختر…</option>${personOpts()}</select></label>
+      <label style="flex:1 1 100%">الشخص (ابحث ثم اختر)
+        <input id="v-search" data-pfilter="1" placeholder="اكتب جزءًا من الاسم…" autocomplete="off">
+        <select id="v-person" size="5">${personOpts()}</select>
+        <small id="v-count">${Object.keys(S.persons).length} اسم</small></label>
       <label>اليوم<input id="v-date" type="date" value="${ymd(now)}"></label>
       <label>الميعاد<input id="v-time" type="time" value="${hm(now)}"></label>
       <button data-act="add-visit">تسجيل</button></div></div>
@@ -355,7 +383,8 @@ $app.addEventListener("click", e => {
   run(() => act(b.dataset.act, b.dataset));
 });
 $app.addEventListener("input", e => {
+  if (e.target.dataset.pfilter) return fillPersons(e.target.value);
   const f = e.target.dataset.filter; if (!f) return;
   const q = e.target.value.trim();
-  document.querySelectorAll("#" + f + " tr").forEach(tr => { tr.hidden = q && !tr.textContent.includes(q); });
+  document.querySelectorAll("#" + f + " tr").forEach(tr => { tr.hidden = !!q && !norm(tr.textContent).includes(norm(q)); });
 });

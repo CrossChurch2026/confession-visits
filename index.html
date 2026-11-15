@@ -52,6 +52,11 @@
   nav button.on { background:var(--pri); color:#fff; border-color:var(--pri); }
   nav button.on .ic { color:var(--gold); }
   .ic { width:18px; height:18px; flex:none; }
+  nav { scrollbar-width:none; }
+  nav::-webkit-scrollbar { display:none; }
+  select[size] { padding:4px; background:#fff; }
+  select[size] option { padding:9px 8px; border-radius:6px; }
+  select[size] option:checked { background:var(--pri) linear-gradient(0deg,var(--pri),var(--pri)); color:#fff; }
 
   main { padding:14px 12px 4px; max-width:1000px; margin:0 auto; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px;
