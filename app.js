@@ -183,24 +183,27 @@ function personsView() {
   const add = canEdit() ? `<div class="card"><h3>إضافة شخص (مرة واحدة)</h3><div class="row">
       <label>الاسم<input id="p-name"></label>
       <label>الهاتف (اختياري)<input id="p-phone" dir="ltr"></label>
+      <label>العنوان (اختياري)<input id="p-address"></label>
       ${role() === "priest" ? "" : `<label>الأب الكاهن<select id="p-priest"><option value="">اختر…</option>${priestOpts("", role() === "admin")}</select></label>`}
       <button data-act="add-person">إضافة</button></div></div>` : "";
   const rows = Object.entries(S.persons).sort(byName).map(([id, p]) => {
     const vs = visitsOf(id);
-    return `<tr><td>${esc(p.name)}</td>${showPriest() ? `<td>${esc(priestName(p.priestId))}</td>` : ""}
+    return `<tr><td>${esc(p.name)}</td><td>${esc(p.address || "—")}</td>${showPriest() ? `<td>${esc(priestName(p.priestId))}</td>` : ""}
       <td>${vs.length}</td><td>${vs[0] ? esc(fmtDate(vs[0][1].date)) : "—"}</td>
       <td><button class="sec" data-act="detail" data-id="${esc(id)}">السجل</button>
       ${canEdit() ? ` <button class="danger" data-act="del-person" data-id="${esc(id)}">حذف</button>` : ""}</td></tr>`;
   }).join("");
   let detail = "";
   if (S.detail && S.persons[S.detail]) {
-    detail = `<div class="card"><h3>زيارات: ${esc(S.persons[S.detail].name)}</h3><table><tbody>` +
+    const dp = S.persons[S.detail];
+    detail = `<div class="card"><h3>زيارات: ${esc(dp.name)}</h3>
+      <p style="color:var(--mute);margin:0 0 8px">${dp.address ? "العنوان: " + esc(dp.address) : ""}${dp.address && dp.phone ? " — " : ""}${dp.phone ? "الهاتف: " + esc(dp.phone) : ""}</p><table><tbody>` +
       (visitsOf(S.detail).map(([, v]) => `<tr><td>${esc(fmtDate(v.date))}</td><td>${esc(fmtTime(v.time))}</td></tr>`).join("") ||
        "<tr><td>لا توجد زيارات</td></tr>") + "</tbody></table></div>";
   }
   return add + `<div class="card"><div class="row"><h3 style="flex:1;margin:0">الأشخاص (${Object.keys(S.persons).length})</h3>
     <input data-filter="p-body" placeholder="بحث بالاسم…" style="max-width:220px"></div>
-    <div class="tw"><table><thead><tr><th>الاسم</th>${showPriest() ? "<th>الأب الكاهن</th>" : ""}<th>عدد الزيارات</th><th>آخر زيارة</th><th></th></tr></thead>
+    <div class="tw"><table><thead><tr><th>الاسم</th><th>العنوان</th>${showPriest() ? "<th>الأب الكاهن</th>" : ""}<th>عدد الزيارات</th><th>آخر زيارة</th><th></th></tr></thead>
     <tbody id="p-body">${rows}</tbody></table></div></div>` + detail;
 }
 
@@ -271,7 +274,7 @@ async function act(a, d) {
     else { priestId = val("p-priest"); if (!priestId) return flash("اختر الأب الكاهن"); churchId = S.priests[priestId].churchId; }
     const dup = Object.values(S.persons).some(p => p.priestId === priestId && p.name === name);
     if (dup && !confirm("يوجد شخص بنفس الاسم عند هذا الأب. هل تريد الإضافة مرة أخرى؟")) return;
-    const data = { name, phone: val("p-phone").trim(), priestId, churchId, createdAt: serverTimestamp() };
+    const data = { name, phone: val("p-phone").trim(), address: val("p-address").trim(), priestId, churchId, createdAt: serverTimestamp() };
     const ref = await addDoc(collection(db, "persons"), data);
     S.persons[ref.id] = { ...data, createdAt: null }; S.msg = "تمت الإضافة"; return render();
   }
@@ -327,6 +330,8 @@ async function act(a, d) {
     a2.download = `visits-${ymd(new Date())}.csv`; a2.click(); URL.revokeObjectURL(a2.href);
   }
 }
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 $app.addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
