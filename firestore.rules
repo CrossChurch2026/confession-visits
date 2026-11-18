@@ -72,5 +72,30 @@ service cloud.firestore {
         && inScope(resource.data) && inScope(request.resource.data);
       allow delete: if approved() && role() != 'recorder' && inScope(resource.data);
     }
+
+    // ملاحظات الأب الكاهن على الزيارات (معرّف المستند = معرّف الزيارة).
+    // لا يقرؤها ولا يكتبها إلا الأب الكاهن صاحبها: لا مسؤول الكنيسة ولا المسجّل ولا المدير.
+    match /visitNotes/{id} {
+      allow read: if approved() && role() == 'priest'
+        && resource.data.priestId == meDoc().data.priestId;
+      allow create: if approved() && role() == 'priest'
+        && request.resource.data.keys().hasOnly(['visitId', 'priestId', 'churchId', 'note', 'updatedAt'])
+        && request.resource.data.visitId == id
+        && request.resource.data.priestId == meDoc().data.priestId
+        && request.resource.data.churchId == meDoc().data.churchId
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 5000;
+      allow update: if approved() && role() == 'priest'
+        && resource.data.priestId == meDoc().data.priestId
+        && request.resource.data.keys().hasOnly(['visitId', 'priestId', 'churchId', 'note', 'updatedAt'])
+        && request.resource.data.visitId == id
+        && request.resource.data.priestId == resource.data.priestId
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 5000;
+      // الحذف فقط (بدون قراءة): للأب صاحبها، أو لمسؤول الكنيسة/المدير عند حذف الزيارة
+      allow delete: if isAdmin()
+        || (approved() && role() == 'priest' && resource.data.priestId == meDoc().data.priestId)
+        || (approved() && role() == 'church_admin' && resource.data.churchId == meDoc().data.churchId);
+    }
   }
 }

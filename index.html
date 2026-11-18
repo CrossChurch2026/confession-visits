@@ -100,6 +100,20 @@
   .orn span { flex:1; height:2px; background:linear-gradient(90deg,transparent,var(--gold)); }
   .orn span:last-child { transform:scaleX(-1); }
   .orn svg { width:22px; height:34px; flex:none; }
+
+  textarea { padding:10px; border:1px solid var(--line); border-radius:10px; font:inherit; width:100%;
+    background:#fcfaf2; color:var(--ink); resize:vertical; }
+  textarea:focus { outline:2px solid var(--gold); border-color:var(--gold); }
+  .note-line { color:var(--mute); font-size:12px; white-space:pre-wrap; }
+
+  /* بطاقات المستخدمين */
+  .ucard .uhead { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .ucard .usum { color:var(--pri); font-weight:700; margin:8px 0 10px; }
+  .ugrid { display:grid; gap:10px; margin-bottom:12px; }
+  .ugrid label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--mute); font-weight:600; }
+  .ucard:not([data-role="church_admin"]) .f-church { display:none; }
+  .ucard:not([data-role="priest"]):not([data-role="recorder"]) .f-priest { display:none; }
+  @media (min-width:700px) { .ugrid { grid-template-columns:repeat(3,1fr); } }
 </style>
 </head>
 <body>

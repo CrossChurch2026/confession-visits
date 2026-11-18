@@ -20,7 +20,7 @@ const ROLES = {
 const STATUS = { pending: "قيد الموافقة", approved: "موافَق عليه", rejected: "مرفوض" };
 
 const S = { user: null, me: null, tab: "visits", loading: true, msg: "", detail: null,
-            churches: {}, priests: {}, persons: {}, visits: {}, users: {} };
+            churches: {}, priests: {}, persons: {}, visits: {}, users: {}, notes: {} };
 const $app = document.getElementById("app");
 
 // ---------- أدوات ----------
@@ -74,7 +74,7 @@ function scoped(name) {
   return query(c, where("priestId", "==", S.me.priestId), where("churchId", "==", S.me.churchId));
 }
 async function loadData() {
-  S.churches = {}; S.priests = {}; S.persons = {}; S.visits = {};
+  S.churches = {}; S.priests = {}; S.persons = {}; S.visits = {}; S.notes = {};
   if (role() === "admin") {
     (await getDocs(collection(db, "churches"))).forEach(d => S.churches[d.id] = d.data());
     (await getDocs(collection(db, "priests"))).forEach(d => S.priests[d.id] = d.data());
@@ -93,6 +93,11 @@ async function loadData() {
   }
   (await getDocs(scoped("persons"))).forEach(d => S.persons[d.id] = d.data());
   (await getDocs(scoped("visits"))).forEach(d => S.visits[d.id] = d.data());
+  // ملاحظات الأب الكاهن: تُحمَّل للأب الكاهن فقط (والقواعد تمنع غيره من قراءتها)
+  if (role() === "priest" && S.me.priestId) {
+    (await getDocs(query(collection(db, "visitNotes"), where("priestId", "==", S.me.priestId))))
+      .forEach(d => S.notes[d.id] = d.data());
+  }
 }
 async function loadUsers() {
   S.users = {};
@@ -160,6 +165,7 @@ const ICON = {
   priests: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7M8 4h8"/>'),
   churches: svg('<path d="M12 2v5M9.5 4.5h5M5 21V12l7-5 7 5v9zM10 21v-5h4v5"/>'),
   users: svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>'),
+  note: svg('<path d="M4 4h16v12H8l-4 4zM8 9h8M8 12h5"/>'),
   upload: svg('<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>'),
   logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>')
 };
@@ -209,10 +215,10 @@ function visitsView() {
   const rows = Object.entries(S.visits)
     .sort((a, b) => (b[1].date + b[1].time).localeCompare(a[1].date + a[1].time)).slice(0, 300)
     .map(([id, v]) => `<tr><td>${esc(fmtDate(v.date))}</td><td>${esc(fmtTime(v.time))}</td>
-      <td>${esc(S.persons[v.personId]?.name || "—")}</td>
+      <td>${esc(S.persons[v.personId]?.name || "—")}${role() === "priest" && S.notes[id] ? `<br><small class="note-line">ملاحظة: ${esc(S.notes[id].note.slice(0, 45))}${S.notes[id].note.length > 45 ? "…" : ""}</small>` : ""}</td>
       ${showPriest() ? `<td>${esc(priestName(v.priestId))}</td>` : ""}
-      ${canEdit() ? `<td><button class="danger sm" data-act="del-visit" data-id="${esc(id)}">حذف</button></td>` : ""}</tr>`).join("");
-  return `<div class="card"><h3 class="band">${ICON.visits}تسجيل زيارة</h3><div class="row">
+      ${canEdit() ? `<td><div class="acts">${role() === "priest" ? `<button class="sec sm" data-act="note-open" data-id="${esc(id)}">${S.notes[id] ? "ملاحظات ●" : "ملاحظة"}</button>` : ""}<button class="danger sm" data-act="del-visit" data-id="${esc(id)}">حذف</button></div></td>` : ""}</tr>`).join("");
+  return noteEditor() + `<div class="card"><h3 class="band">${ICON.visits}تسجيل زيارة</h3><div class="row">
       <label style="flex:1 1 100%">الشخص (ابحث ثم اختر)
         <input id="v-search" data-pfilter="1" placeholder="اكتب جزءًا من الاسم…" autocomplete="off">
         <select id="v-person" size="5" hidden></select>
@@ -240,21 +246,54 @@ function personsView() {
     return `<tr><td>${esc(p.name)}${p.age ? `<br><small>${p.age} سنة</small>` : ""}</td><td>${esc(p.address || "—")}</td>${showPriest() ? `<td>${esc(priestName(p.priestId))}</td>` : ""}
       <td>${vs.length}</td><td class="hm">${vs[0] ? esc(fmtDate(vs[0][1].date)) : "—"}</td>
       <td><div class="acts"><button class="sec sm" data-act="detail" data-id="${esc(id)}">السجل</button>
-      ${canEdit() ? `<button class="danger sm" data-act="del-person" data-id="${esc(id)}">حذف</button>` : ""}</div></td></tr>`;
+      ${canEdit() ? `<button class="sec sm" data-act="edit-person" data-id="${esc(id)}">تعديل</button><button class="danger sm" data-act="del-person" data-id="${esc(id)}">حذف</button>` : ""}</div></td></tr>`;
   }).join("");
   let detail = "";
   if (S.detail && S.persons[S.detail]) {
     const dp = S.persons[S.detail];
     detail = `<div class="card"><h3>زيارات: ${esc(dp.name)}</h3>
       <p style="color:var(--mute);margin:0 0 8px">${[dp.age ? "السن: " + dp.age : "", dp.address ? "العنوان: " + esc(dp.address) : "", dp.phone ? "الهاتف: " + esc(dp.phone) : ""].filter(Boolean).join(" — ")}</p><table><tbody>` +
-      (visitsOf(S.detail).map(([, v]) => `<tr><td>${esc(fmtDate(v.date))}</td><td>${esc(fmtTime(v.time))}</td></tr>`).join("") ||
+      (visitsOf(S.detail).map(([vid, v]) => {
+        const pr = role() === "priest";
+        return `<tr><td>${esc(fmtDate(v.date))}</td><td>${esc(fmtTime(v.time))}</td>${pr ? `<td><button class="sec sm" data-act="note-open" data-id="${esc(vid)}">${S.notes[vid] ? "ملاحظات ●" : "ملاحظة"}</button></td>` : ""}</tr>` +
+          (pr && S.notes[vid] ? `<tr><td colspan="3" class="note-line">ملاحظة: ${esc(S.notes[vid].note)}</td></tr>` : "");
+      }).join("") ||
        "<tr><td>لا توجد زيارات</td></tr>") + "</tbody></table></div>";
   }
-  return add + importCard() + `<div class="card"><div class="row"><h3 style="flex:1;margin:0">الأشخاص (${Object.keys(S.persons).length})</h3>
+  return editPersonCard() + add + importCard() + `<div class="card"><div class="row"><h3 style="flex:1;margin:0">الأشخاص (${Object.keys(S.persons).length})</h3>
     <input data-filter="p-body" placeholder="بحث بالاسم…" style="max-width:220px"></div>
     <div class="tw"><table><thead><tr><th>الاسم</th><th>العنوان</th>${showPriest() ? "<th>الأب الكاهن</th>" : ""}<th>عدد الزيارات</th><th class="hm">آخر زيارة</th><th></th></tr></thead>
-    <tbody id="p-body">${rows}</tbody></table></div></div>` + detail;
+    <tbody id="p-body">${rows}</tbody></table></div></div>` + noteEditor() + detail;
 }
+
+// ---------- تعديل بيانات شخص ----------
+function editPersonCard() {
+  const p = S.persons[S.editPerson];
+  if (!canEdit() || !p) return "";
+  return `<div class="card" id="edit-card"><h3 class="band">${ICON.persons}تعديل بيانات: ${esc(p.name)}</h3><div class="row">
+    <label>الاسم<input id="ep-name" value="${esc(p.name)}"></label>
+    <label>الهاتف<input id="ep-phone" dir="ltr" value="${esc(p.phone || "")}"></label>
+    <label>العنوان<input id="ep-address" value="${esc(p.address || "")}"></label>
+    <label>السن<input id="ep-age" type="number" min="1" max="120" inputmode="numeric" value="${p.age ?? ""}"></label>
+    ${role() === "priest" ? "" : `<label>الأب الكاهن<select id="ep-priest">${priestOpts(p.priestId, role() === "admin")}</select></label>`}
+    </div><div class="row" style="margin-top:12px"><button data-act="save-person">حفظ التعديلات</button>
+    <button class="sec" data-act="edit-cancel">إلغاء</button></div></div>`;
+}
+
+// ---------- ملاحظات الأب الكاهن على الزيارة (للأب الكاهن فقط) ----------
+function noteEditor() {
+  if (role() !== "priest" || !S.noteFor || !S.visits[S.noteFor]) return "";
+  const v = S.visits[S.noteFor], n = S.notes[S.noteFor];
+  return `<div class="card" id="note-ed"><h3 class="band">${ICON.note}ملاحظات الأب الكاهن</h3>
+    <p style="margin:0 0 8px;color:var(--mute)">${esc(S.persons[v.personId]?.name || "—")} — ${esc(fmtDate(v.date))} ${esc(fmtTime(v.time))}</p>
+    <textarea id="note-text" rows="5" maxlength="5000" placeholder="اكتب ملاحظاتك هنا…">${esc(n?.note || "")}</textarea>
+    <small>هذه الملاحظات لا تظهر لأي مستخدم آخر داخل البرنامج.</small>
+    <div class="row" style="margin-top:10px"><button data-act="note-save">حفظ</button>
+    <button class="sec" data-act="note-cancel">إغلاق</button>
+    ${n ? '<button class="danger" data-act="note-del">حذف الملاحظة</button>' : ""}</div></div>`;
+}
+// حذف ملاحظة زيارة (يُتجاهل الخطأ لو لا توجد ملاحظة أو لا صلاحية)
+const dropNote = async vid => { try { await deleteDoc(doc(db, "visitNotes", vid)); } catch (e) { /* لا ملاحظة */ } delete S.notes[vid]; };
 
 // ---------- استيراد الأشخاص من Excel ----------
 const toLatinDigits = s => String(s).replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
@@ -384,25 +423,31 @@ function churchesView() {
     <div class="card"><table><tbody>${rows}</tbody></table></div>`;
 }
 
+// كل مستخدم في بطاقة مستقلة (أوضح على الموبايل من الجدول)
 function usersView() {
   const order = { pending: 0, approved: 1, rejected: 2 };
-  const rows = Object.entries(S.users).sort((a, b) => order[a[1].status] - order[b[1].status]).map(([id, u]) =>
-    `<tr><td>${esc(u.name)}<br><small>${esc(u.email)}</small></td>
-     <td><span class="tag ${u.status === "approved" ? "ok" : ""}">${STATUS[u.status] || esc(u.status)}</span></td>
-     <td><select id="u-role-${esc(id)}">${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${u.role === k ? "selected" : ""}>${v}</option>`).join("")}</select></td>
-     <td><select id="u-church-${esc(id)}"><option value="">—</option>${churchOpts(u.churchId)}</select></td>
-     <td><select id="u-priest-${esc(id)}"><option value="">—</option>${priestOpts(u.priestId, true)}</select></td>
-     <td><button data-act="user-save" data-id="${esc(id)}" data-status="approved">موافقة / حفظ</button>
-     <button class="danger" data-act="user-save" data-id="${esc(id)}" data-status="rejected">رفض</button></td></tr>`).join("");
-  return `<div class="card"><div class="tw"><table><thead><tr><th>المستخدم</th><th>الحالة</th><th>الدور</th><th>الكنيسة</th><th>الأب الكاهن</th><th></th></tr></thead>
-    <tbody>${rows}</tbody></table></div>
-    <small>مسؤول كنيسة: يحتاج كنيسة. أب كاهن / مسجّل: يحتاج أبًا كاهنًا (تُحدَّد كنيسته تلقائيًا).</small></div>`;
+  const cards = Object.entries(S.users).sort((a, b) => order[a[1].status] - order[b[1].status]).map(([id, u]) => {
+    const summary = [ROLES[u.role] || u.role, u.churchId ? "كنيسة: " + churchName(u.churchId) : "", u.priestId ? "الأب الكاهن: " + priestName(u.priestId) : ""].filter(Boolean).join(" • ");
+    return `<div class="card ucard" data-role="${esc(u.role)}">
+      <div class="uhead"><div><strong>${esc(u.name)}</strong><br><small dir="ltr">${esc(u.email)}</small></div>
+        <span class="tag ${u.status === "approved" ? "ok" : ""}">${STATUS[u.status] || esc(u.status)}</span></div>
+      <div class="usum">${esc(summary)}</div>
+      <div class="ugrid">
+        <label>الدور<select id="u-role-${esc(id)}" data-urole="1">${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${u.role === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="f-church">الكنيسة (لمسؤول الكنيسة)<select id="u-church-${esc(id)}"><option value="">— اختر —</option>${churchOpts(u.churchId)}</select></label>
+        <label class="f-priest">الأب الكاهن (للأب الكاهن / المسجّل)<select id="u-priest-${esc(id)}"><option value="">— اختر —</option>${priestOpts(u.priestId, true)}</select></label>
+      </div>
+      <div class="row"><button data-act="user-save" data-id="${esc(id)}" data-status="approved">${u.status === "approved" ? "حفظ التعديلات" : "موافقة وحفظ"}</button>
+        ${u.status !== "rejected" ? `<button class="danger" data-act="user-save" data-id="${esc(id)}" data-status="rejected">رفض</button>` : ""}</div></div>`;
+  }).join("");
+  return (cards || '<div class="card">لا يوجد مستخدمون</div>') +
+    `<small>مسؤول كنيسة: يحتاج كنيسة. أب كاهن / مسجّل: يحتاج أبًا كاهنًا (تُحدَّد كنيسته تلقائيًا).</small>`;
 }
 
 // ---------- الأوامر ----------
 async function act(a, d) {
   if (a === "tab") {
-    S.tab = d.v; S.msg = ""; S.detail = null; S.imp = null;
+    S.tab = d.v; S.msg = ""; S.detail = null; S.imp = null; S.noteFor = null; S.editPerson = null;
     if (S.tab === "users") await loadUsers();
     return render();
   }
@@ -448,11 +493,12 @@ async function act(a, d) {
   if (a === "detail") { S.detail = S.detail === d.id ? null : d.id; return render(); }
   if (a === "del-visit") {
     if (!confirm("حذف هذه الزيارة؟")) return;
-    await deleteDoc(doc(db, "visits", d.id)); delete S.visits[d.id]; return render();
+    await deleteDoc(doc(db, "visits", d.id)); delete S.visits[d.id]; await dropNote(d.id); return render();
   }
   if (a === "del-person") {
     if (!confirm("حذف الشخص وكل زياراته؟")) return;
-    for (const [vid] of visitsOf(d.id)) { await deleteDoc(doc(db, "visits", vid)); delete S.visits[vid]; }
+    for (const [vid] of visitsOf(d.id)) { await deleteDoc(doc(db, "visits", vid)); delete S.visits[vid]; await dropNote(vid); }
+    if (S.editPerson === d.id) S.editPerson = null;
     await deleteDoc(doc(db, "persons", d.id)); delete S.persons[d.id]; S.detail = null; return render();
   }
   if (a === "del-priest") {
@@ -469,6 +515,11 @@ async function act(a, d) {
     const id = d.id, status = d.status;
     const r = val("u-role-" + id); let churchId = val("u-church-" + id) || null; let priestId = val("u-priest-" + id) || null;
     if (id === S.me.id && (r !== "admin" || status !== "approved")) return flash("لا يمكنك تقليل صلاحيات حسابك");
+    if (status === "rejected") {   // المرفوض لا صلاحيات له
+      const z = { role: "none", status, churchId: null, priestId: null };
+      await updateDoc(doc(db, "users", id), z); Object.assign(S.users[id], z);
+      S.msg = "تم الرفض"; return render();
+    }
     if (status === "approved" && r === "none") return flash("اختر دورًا قبل الموافقة");
     if (r === "church_admin") { if (!churchId) return flash("اختر الكنيسة"); priestId = null; }
     if (r === "priest" || r === "recorder") {
@@ -479,30 +530,80 @@ async function act(a, d) {
     Object.assign(S.users[id], { role: r, status, churchId, priestId });
     S.msg = "تم الحفظ"; return render();
   }
+  // ----- تعديل شخص -----
+  if (a === "edit-person") {
+    S.editPerson = d.id; S.detail = null; S.msg = ""; render();
+    document.getElementById("edit-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (a === "edit-cancel") { S.editPerson = null; return render(); }
+  if (a === "save-person") {
+    const id = S.editPerson, p = S.persons[id]; if (!p || !canEdit()) return;
+    const name = val("ep-name").trim(); if (!name) return flash("اكتب الاسم");
+    if (val("ep-age").trim() && !cleanAge(val("ep-age"))) return flash("السن غير صحيح (من 1 إلى 120)");
+    let priestId = p.priestId, churchId = p.churchId;
+    if (role() !== "priest") {
+      priestId = val("ep-priest"); if (!priestId) return flash("اختر الأب الكاهن");
+      churchId = S.priests[priestId].churchId;
+    }
+    if (Object.entries(S.persons).some(([oid, o]) => oid !== id && o.priestId === priestId && norm(o.name) === norm(name))
+        && !confirm("يوجد شخص آخر بنفس الاسم عند هذا الأب. هل تريد الحفظ؟")) return;
+    const moved = priestId !== p.priestId, vs = visitsOf(id);
+    if (moved && !confirm(`سيتم نقل الشخص و${vs.length} زيارة إلى: ${priestName(priestId)}.\nملاحظات الأب الكاهن الحالي على هذه الزيارات لن تظهر للأب الجديد. متابعة؟`)) return;
+    const data = { name, phone: val("ep-phone").trim(), address: val("ep-address").trim(), age: cleanAge(val("ep-age")), priestId, churchId };
+    await updateDoc(doc(db, "persons", id), data);
+    Object.assign(S.persons[id], data);
+    if (moved) {   // الزيارات تتبع الأب الكاهن الجديد
+      await Promise.all(vs.map(([vid]) => updateDoc(doc(db, "visits", vid), { priestId, churchId })));
+      vs.forEach(([vid]) => Object.assign(S.visits[vid], { priestId, churchId }));
+    }
+    S.editPerson = null; S.msg = "تم حفظ التعديلات"; return render();
+  }
+  // ----- ملاحظات الأب الكاهن -----
+  if (a === "note-open") {
+    if (role() !== "priest") return;
+    S.noteFor = d.id; S.msg = ""; render();
+    document.getElementById("note-ed")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  if (a === "note-cancel") { S.noteFor = null; return render(); }
+  if (a === "note-save") {
+    const vid = S.noteFor; if (role() !== "priest" || !S.visits[vid]) return;
+    const note = val("note-text").trim();
+    if (!note) return flash('اكتب الملاحظة أولًا، أو اضغط "حذف الملاحظة"');
+    const data = { visitId: vid, priestId: S.me.priestId, churchId: S.me.churchId, note, updatedAt: serverTimestamp() };
+    await setDoc(doc(db, "visitNotes", vid), data);
+    S.notes[vid] = { ...data, updatedAt: null }; S.noteFor = null; S.msg = "تم حفظ الملاحظة"; return render();
+  }
+  if (a === "note-del") {
+    if (!confirm("حذف الملاحظة؟")) return;
+    await deleteDoc(doc(db, "visitNotes", S.noteFor)); delete S.notes[S.noteFor];
+    S.noteFor = null; S.msg = "تم حذف الملاحظة"; return render();
+  }
   if (a === "tpl") return downloadTemplate();
   if (a === "imp-cancel") { S.imp = null; return render(); }
   if (a === "imp-go") {
     const list = S.imp?.ok || []; if (!list.length) return;
-    let n = 0;
-    try {
-      for (let i = 0; i < list.length; i += 400) {   // حد Firestore: 500 عملية في الدفعة
-        const chunk = list.slice(i, i + 400), batch = writeBatch(db), made = [];
-        chunk.forEach(p => {
-          const ref = doc(collection(db, "persons"));
-          batch.set(ref, { ...p, createdAt: serverTimestamp() });
-          made.push([ref.id, p]);
-        });
-        flash(`جارٍ الحفظ… ${Math.min(i + 400, list.length)} / ${list.length}`);
-        await batch.commit();
-        made.forEach(([id, p]) => { S.persons[id] = { ...p, createdAt: null }; });
-        n += chunk.length;
+    // كتابة مستقلة لكل شخص (8 في نفس الوقت): قواعد Firestore تحدّ من عدد عمليات القراءة
+    // داخل الدفعة الواحدة (writeBatch)، فالدفعات الكبيرة قد تُرفض.
+    let n = 0, failed = 0, firstErr = null;
+    const queue = [...list];
+    const worker = async () => {
+      while (queue.length) {
+        const p = queue.shift();
+        try {
+          const ref = await addDoc(collection(db, "persons"), { ...p, createdAt: serverTimestamp() });
+          S.persons[ref.id] = { ...p, createdAt: null }; n++;
+        } catch (e) { console.error(e); failed++; firstErr = firstErr || e; }
+        if ((n + failed) % 10 === 0) flash(`جارٍ الحفظ… ${n + failed} / ${list.length}`);
       }
-    } catch (e) {
-      console.error(e); S.imp = null;
-      S.msg = `توقف الاستيراد بعد حفظ ${n} من ${list.length} (${e.code || e.message}). راجع قائمة الأشخاص قبل إعادة الرفع لتجنب التكرار.`;
-      return render();
-    }
-    S.imp = null; S.msg = `تم استيراد ${n} شخص`; return render();
+    };
+    await Promise.all(Array.from({ length: 8 }, worker));
+    S.imp = null;
+    S.msg = failed
+      ? `تم استيراد ${n} وفشل ${failed} (${firstErr.code || firstErr.message}). راجع قائمة الأشخاص قبل إعادة الرفع لتجنب التكرار.`
+      : `تم استيراد ${n} شخص`;
+    return render();
   }
   if (a === "export") {
     const q = s => `"${String(s ?? "").replace(/"/g, '""')}"`;
@@ -517,6 +618,8 @@ async function act(a, d) {
 
 $app.addEventListener("change", e => {
   if (e.target.id === "imp-file") run(() => parseImport(e.target.files[0]));
+  // إظهار حقل الكنيسة / الأب الكاهن المناسب للدور المختار في بطاقة المستخدم
+  if (e.target.dataset.urole) e.target.closest(".ucard").dataset.role = e.target.value;
 });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
